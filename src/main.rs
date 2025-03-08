@@ -1,9 +1,8 @@
 mod config;
 
-use core::panic;
 use std::process::exit;
 
-use anyhow::Context;
+use anyhow::{Context, Result, anyhow};
 use async_openai::{
     Client,
     types::{
@@ -13,7 +12,7 @@ use async_openai::{
 };
 use cliclack::{input, intro, log::info, outro, select, spinner};
 
-fn get_config_path() -> anyhow::Result<std::path::PathBuf> {
+fn get_config_path() -> Result<std::path::PathBuf> {
     let config_dir = dirs::config_dir()
         .context("Failed to get configuration directory")?
         .join("aia");
@@ -21,11 +20,11 @@ fn get_config_path() -> anyhow::Result<std::path::PathBuf> {
     Ok(config_path)
 }
 
-fn get_ai_context() -> anyhow::Result<String> {
+fn get_ai_context() -> Result<String> {
     let cwd = std::env::current_dir().context("Failed to get current working directory")?;
     let cwd_str = cwd
         .to_str()
-        .context("Failed to convert current working directory to string")?;
+        .ok_or_else(|| anyhow!("Failed to convert current working directory to string"))?;
 
     let paths = std::fs::read_dir(&cwd).context("Failed to read current working directory")?;
     let file_names = paths
@@ -41,13 +40,14 @@ fn get_ai_context() -> anyhow::Result<String> {
 }
 
 #[tokio::main]
-async fn main() -> anyhow::Result<()> {
-    intro("AIA Terminal Assistant")?;
+async fn main() -> Result<()> {
+    intro("AIA Terminal Assistant").context("Failed to start intro message")?;
 
     let config_path = get_config_path()?;
-    let config = config::Config::read(&config_path)?;
+    let config = config::Config::read(&config_path).context("Failed to read config file")?;
     if config.openai_token.is_empty() {
-        outro("Please set your OpenAI API key in ~/.config/aia/config.toml")?;
+        outro("Please set your OpenAI API key in ~/.config/aia/config.toml")
+            .context("Failed to display outro message")?;
         exit(1);
     }
 
@@ -59,11 +59,13 @@ async fn main() -> anyhow::Result<()> {
     let mut messages = vec![
         ChatCompletionRequestSystemMessageArgs::default()
             .content(include_str!("../system_message.txt"))
-            .build()?
+            .build()
+            .context("Failed to build system message")?
             .into(),
         ChatCompletionRequestUserMessageArgs::default()
             .content(get_ai_context()?)
-            .build()?
+            .build()
+            .context("Failed to build AI context message")?
             .into(),
     ];
 
@@ -80,7 +82,8 @@ async fn main() -> anyhow::Result<()> {
         messages.push(
             ChatCompletionRequestUserMessageArgs::default()
                 .content(input.clone())
-                .build()?
+                .build()
+                .context("Failed to build user message")?
                 .into(),
         );
 
@@ -92,25 +95,29 @@ async fn main() -> anyhow::Result<()> {
 
         let spinner = spinner();
         spinner.start("Generating response...");
-        let response = client.chat().create(request).await;
+        let response = client
+            .chat()
+            .create(request)
+            .await
+            .context("Failed to get OpenAI response")?;
         spinner.stop("Generated response");
 
-        let response = response.context("Failed to get OpenAI response")?;
         let choice = response
             .choices
             .get(0)
-            .context("No choices returned in response")?;
+            .ok_or_else(|| anyhow!("No choices returned in response"))?;
         let response_content = choice
             .message
             .content
             .clone()
-            .context("Failed to get response")?;
+            .ok_or_else(|| anyhow!("Failed to get response content"))?;
         let response_content = response_content.replace("```json", "").replace("```", "");
 
         messages.push(
             ChatCompletionRequestAssistantMessageArgs::default()
                 .content(response_content.clone())
-                .build()?
+                .build()
+                .context("Failed to build assistant message")?
                 .into(),
         );
 
@@ -119,13 +126,13 @@ async fn main() -> anyhow::Result<()> {
 
         match response_json["type"]
             .as_str()
-            .context("Failed to get response type")?
+            .ok_or_else(|| anyhow!("Failed to get response type"))?
         {
             "command" => {
                 let command = response_json["command"]
                     .as_str()
-                    .context("Failed to get command")?;
-                info(format!("Command: {}", command))?;
+                    .ok_or_else(|| anyhow!("Failed to get command"))?;
+                info(format!("Command: {}", command)).context("Failed to log command")?;
 
                 let selected = select("Pick an action")
                     .item("execute", "Execute", "")
@@ -136,7 +143,7 @@ async fn main() -> anyhow::Result<()> {
 
                 match selected {
                     "execute" => {
-                        let output = std::process::Command::new("bash")
+                        std::process::Command::new("bash")
                             .arg("-c")
                             .arg(command)
                             .output()
@@ -156,24 +163,25 @@ async fn main() -> anyhow::Result<()> {
                         messages.push(
                             ChatCompletionRequestUserMessageArgs::default()
                                 .content("User did not execute command")
-                                .build()?
+                                .build()
+                                .context("Failed to build follow-up message")?
                                 .into(),
                         );
                     }
                     "quit" => break 'infinite,
-                    _ => return Err(anyhow::anyhow!("Invalid selection")),
+                    _ => return Err(anyhow!("Invalid selection")),
                 }
             }
             "question" => {
                 let question = response_json["question"]
                     .as_str()
-                    .context("Failed to get question")?;
-                info(question)?;
+                    .ok_or_else(|| anyhow!("Failed to get question"))?;
+                info(question).context("Failed to log question")?;
             }
-            _ => return Err(anyhow::anyhow!("Failed to parse response")),
+            _ => return Err(anyhow!("Unexpected response type")),
         }
     }
 
-    outro("Goodbye!")?;
+    outro("Goodbye!").context("Failed to display outro message")?;
     Ok(())
 }
