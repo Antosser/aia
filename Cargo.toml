@@ -7,6 +7,7 @@ authors = ["Anton Aparin <anton@antonaparin.com>"]
 [dependencies]
 anyhow = { version = "1.0.97", features = ["backtrace"] }
 async-openai = { version = "0.28.0", features = ["realtime"] }
+atty = "0.2.14"
 cliclack = "0.3.5"
 dirs = "6.0.0"
 serde = { version = "1.0.218", features = ["derive"] }

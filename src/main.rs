@@ -1,6 +1,6 @@
 mod config;
 
-use std::process::exit;
+use std::{io::Read, process::exit};
 
 use anyhow::{Context, Result, anyhow};
 use async_openai::{
@@ -39,6 +39,19 @@ fn get_ai_context() -> Result<String> {
     ))
 }
 
+fn get_piped_input() -> anyhow::Result<Option<String>> {
+    if atty::is(atty::Stream::Stdin) {
+        return Ok(None);
+    }
+
+    let mut buffer = String::new();
+    let input = std::io::stdin()
+        .lock()
+        .read_to_string(&mut buffer)
+        .context("Failed to read piped input")?;
+    Ok(Some(buffer))
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     intro("AIA Terminal Assistant").context("Failed to start intro message")?;
@@ -68,6 +81,16 @@ async fn main() -> Result<()> {
             .context("Failed to build AI context message")?
             .into(),
     ];
+
+    if let Some(piped_input) = get_piped_input().context("Failed to get piped input")? {
+        messages.push(
+            ChatCompletionRequestUserMessageArgs::default()
+                .content(piped_input)
+                .build()
+                .context("Failed to build piped input message")?
+                .into(),
+        );
+    }
 
     let args: Vec<String> = std::env::args().collect();
     'infinite: for iteration in 0.. {
