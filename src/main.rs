@@ -76,14 +76,23 @@ async fn main() -> anyhow::Result<()> {
         let input = if std::env::args().len() > 1 && iteration == 0 {
             std::env::args().skip(1).collect::<Vec<_>>().join(" ")
         } else {
-            input("Input:").interact()?
+            input("Input:")
+                .interact()
+                .context("Failed to parse input")?
         };
+
+        messages.push(
+            ChatCompletionRequestUserMessageArgs::default()
+                .content(input.clone())
+                .build()?
+                .into(),
+        );
 
         let request = CreateChatCompletionRequestArgs::default()
             .model(&config.openai_model)
             .messages(messages.clone())
-            .user(input)
-            .build()?;
+            .build()
+            .context("Failed to create request")?;
 
         let spinner = spinner();
         spinner.start("Generating response...");
@@ -92,7 +101,9 @@ async fn main() -> anyhow::Result<()> {
             .message
             .content
             .clone()
-            .context("Failed to get response")?;
+            .context("Failed to get response")?
+            .replace("```json", "")
+            .replace("```", "");
         spinner.stop("Generated response");
 
         messages.push(
@@ -104,9 +115,14 @@ async fn main() -> anyhow::Result<()> {
 
         let response = serde_json::from_str::<serde_json::Value>(&response)?;
 
-        match response["type"].as_str().unwrap() {
+        match response["type"]
+            .as_str()
+            .context("Failed to get response type")?
+        {
             "command" => {
-                let command = response["command"].as_str().unwrap();
+                let command = response["command"]
+                    .as_str()
+                    .context("Failed to get command")?;
 
                 info(format!("Command: {}", command))?;
 
@@ -114,7 +130,8 @@ async fn main() -> anyhow::Result<()> {
                     .item("execute", "Execute", "")
                     .item("follow", "Follow-up", "")
                     .item("quit", "Quit", "")
-                    .interact()?;
+                    .interact()
+                    .context("Failed to parse user selection")?;
 
                 match selected {
                     "execute" => {
@@ -127,7 +144,8 @@ async fn main() -> anyhow::Result<()> {
                         let selected = select("Pick an action")
                             .item("continue", "Continue", "")
                             .item("quit", "Quit", "")
-                            .interact()?;
+                            .interact()
+                            .context("Failed to parse user selection")?;
 
                         match selected {
                             "continue" => {}
@@ -155,7 +173,13 @@ async fn main() -> anyhow::Result<()> {
                     }
                 }
             }
-            "question" => {}
+            "question" => {
+                let question = response["question"]
+                    .as_str()
+                    .context("Failed to get question")?;
+
+                info(question)?;
+            }
             _ => {
                 outro("Failed to parse response")?;
                 exit(1);
