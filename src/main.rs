@@ -18,29 +18,25 @@ fn get_config_path() -> anyhow::Result<std::path::PathBuf> {
         .context("Failed to get configuration directory")?
         .join("aia");
     let config_path = config_dir.join("config.toml");
-
     Ok(config_path)
 }
 
 fn get_ai_context() -> anyhow::Result<String> {
     let cwd = std::env::current_dir().context("Failed to get current working directory")?;
-    let cwd = cwd
+    let cwd_str = cwd
         .to_str()
-        .context("Failed to get current working directory")?;
+        .context("Failed to convert current working directory to string")?;
 
-    let paths = std::fs::read_dir(cwd).context("Failed to read current working directory")?;
-
-    let binding = paths
-        .map(|path| path.context("Failed to get file path"))
-        .collect::<Result<Vec<_>, _>>()?;
-    let paths = binding
-        .iter()
-        .map(|path| path.file_name().to_str().unwrap().to_string());
+    let paths = std::fs::read_dir(&cwd).context("Failed to read current working directory")?;
+    let file_names = paths
+        .filter_map(|entry| entry.ok())
+        .filter_map(|entry| entry.file_name().to_str().map(|s| s.to_string()))
+        .collect::<Vec<_>>();
 
     Ok(format!(
         "Current directory: {}\nFiles in directory: {}",
-        cwd,
-        paths.collect::<Vec<_>>().join(", ")
+        cwd_str,
+        file_names.join(", ")
     ))
 }
 
@@ -49,18 +45,17 @@ async fn main() -> anyhow::Result<()> {
     intro("AIA Terminal Assistant")?;
 
     let config_path = get_config_path()?;
-
     let config = config::Config::read(&config_path)?;
     if config.openai_token.is_empty() {
         outro("Please set your OpenAI API key in ~/.config/aia/config.toml")?;
         exit(1);
     }
+
     unsafe {
         std::env::set_var("OPENAI_API_KEY", config.openai_token);
     }
 
     let client = Client::new();
-
     let mut messages = vec![
         ChatCompletionRequestSystemMessageArgs::default()
             .content(include_str!("../system_message.txt"))
@@ -72,9 +67,10 @@ async fn main() -> anyhow::Result<()> {
             .into(),
     ];
 
+    let args: Vec<String> = std::env::args().collect();
     'infinite: for iteration in 0.. {
-        let input = if std::env::args().len() > 1 && iteration == 0 {
-            std::env::args().skip(1).collect::<Vec<_>>().join(" ")
+        let input = if args.len() > 1 && iteration == 0 {
+            args[1..].join(" ")
         } else {
             input("Input:")
                 .interact()
@@ -96,34 +92,39 @@ async fn main() -> anyhow::Result<()> {
 
         let spinner = spinner();
         spinner.start("Generating response...");
-        let response = client.chat().create(request).await?;
-        let response = response.choices[0]
+        let response = client.chat().create(request).await;
+        spinner.stop("Generated response");
+
+        let response = response.context("Failed to get OpenAI response")?;
+        let choice = response
+            .choices
+            .get(0)
+            .context("No choices returned in response")?;
+        let response_content = choice
             .message
             .content
             .clone()
-            .context("Failed to get response")?
-            .replace("```json", "")
-            .replace("```", "");
-        spinner.stop("Generated response");
+            .context("Failed to get response")?;
+        let response_content = response_content.replace("```json", "").replace("```", "");
 
         messages.push(
             ChatCompletionRequestAssistantMessageArgs::default()
-                .content(response.clone())
+                .content(response_content.clone())
                 .build()?
                 .into(),
         );
 
-        let response = serde_json::from_str::<serde_json::Value>(&response)?;
+        let response_json = serde_json::from_str::<serde_json::Value>(&response_content)
+            .context("Failed to parse response as JSON")?;
 
-        match response["type"]
+        match response_json["type"]
             .as_str()
             .context("Failed to get response type")?
         {
             "command" => {
-                let command = response["command"]
+                let command = response_json["command"]
                     .as_str()
                     .context("Failed to get command")?;
-
                 info(format!("Command: {}", command))?;
 
                 let selected = select("Pick an action")
@@ -147,14 +148,8 @@ async fn main() -> anyhow::Result<()> {
                             .interact()
                             .context("Failed to parse user selection")?;
 
-                        match selected {
-                            "continue" => {}
-                            "quit" => {
-                                break 'infinite;
-                            }
-                            _ => {
-                                panic!("Failed to parse response");
-                            }
+                        if selected == "quit" {
+                            break 'infinite;
                         }
                     }
                     "follow" => {
@@ -165,29 +160,20 @@ async fn main() -> anyhow::Result<()> {
                                 .into(),
                         );
                     }
-                    "quit" => {
-                        break 'infinite;
-                    }
-                    _ => {
-                        panic!("Failed to parse response");
-                    }
+                    "quit" => break 'infinite,
+                    _ => return Err(anyhow::anyhow!("Invalid selection")),
                 }
             }
             "question" => {
-                let question = response["question"]
+                let question = response_json["question"]
                     .as_str()
                     .context("Failed to get question")?;
-
                 info(question)?;
             }
-            _ => {
-                outro("Failed to parse response")?;
-                exit(1);
-            }
+            _ => return Err(anyhow::anyhow!("Failed to parse response")),
         }
     }
 
     outro("Goodbye!")?;
-
     Ok(())
 }
