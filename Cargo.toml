@@ -2,6 +2,7 @@
 name = "aia"
 version = "0.1.0"
 edition = "2024"
+authors = ["Anton Aparin <anton@antonaparin.com>"]
 
 [dependencies]
 anyhow = { version = "1.0.97", features = ["backtrace"] }
