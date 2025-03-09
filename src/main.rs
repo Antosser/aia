@@ -118,7 +118,7 @@ async fn main() -> Result<()> {
                 .into(),
         );
 
-        {
+        let (response_content, response_json) = loop {
             let request = CreateChatCompletionRequestArgs::default()
                 .model(&config.openai_model)
                 .messages(messages.clone())
@@ -126,58 +126,48 @@ async fn main() -> Result<()> {
                 .context("Failed to create request")?;
 
             let spinner = spinner();
-            spinner.start("Thinking...");
+            spinner.start("Generating response...");
             let response = client
                 .chat()
                 .create(request)
                 .await
                 .context("Failed to get OpenAI response")?;
-            spinner.stop("Thought");
+            spinner.stop("Generated response");
 
             let choice = response
                 .choices
                 .first()
                 .ok_or_else(|| anyhow!("No choices returned in response"))?;
-            let response_content = choice
+            let response_content = match choice
                 .message
                 .content
                 .clone()
-                .ok_or_else(|| anyhow!("Failed to get response content"))?;
+                .ok_or_else(|| anyhow!("Failed to get response content"))?
+                .split("[JSON]")
+                .nth(1)
+            {
+                Some(content) => content.trim().to_string(),
+                None => {
+                    cliclack::log::error("No JSON content in response")?;
+                    continue;
+                }
+            }
+            .chars()
+            .skip_while(|s| *s != '{')
+            .collect::<String>();
+            let trimmed_response_content = response_content.trim_end_matches("```");
 
-            messages.push(
-                ChatCompletionRequestAssistantMessageArgs::default()
-                    .content(response_content.clone())
-                    .build()
-                    .context("Failed to build assistant message")?
-                    .into(),
-            );
-        }
+            let response_json = serde_json::from_str::<serde_json::Value>(trimmed_response_content);
 
-        let request = CreateChatCompletionRequestArgs::default()
-            .model(&config.openai_model)
-            .messages(messages.clone())
-            .build()
-            .context("Failed to create request")?;
-
-        let spinner = spinner();
-        spinner.start("Generating response...");
-        let response = client
-            .chat()
-            .create(request)
-            .await
-            .context("Failed to get OpenAI response")?;
-        spinner.stop("Generated response");
-
-        let choice = response
-            .choices
-            .first()
-            .ok_or_else(|| anyhow!("No choices returned in response"))?;
-        let response_content = choice
-            .message
-            .content
-            .clone()
-            .ok_or_else(|| anyhow!("Failed to get response content"))?;
-        let response_content = response_content.replace("```json", "").replace("```", "");
+            match response_json {
+                Ok(json) => break (response_content, json),
+                Err(err) => {
+                    cliclack::log::error(format!("Failed to parse JSON: {}", err))?;
+                    println!("Response: {}", response_content);
+                    continue;
+                }
+            }
+        };
 
         messages.push(
             ChatCompletionRequestAssistantMessageArgs::default()
@@ -186,9 +176,6 @@ async fn main() -> Result<()> {
                 .context("Failed to build assistant message")?
                 .into(),
         );
-
-        let response_json = serde_json::from_str::<serde_json::Value>(&response_content)
-            .context("Failed to parse response as JSON")?;
 
         match response_json["type"]
             .as_str()
