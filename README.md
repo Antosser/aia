@@ -2,7 +2,7 @@
 
 AIA (AI Assistant) is a terminal-based tool that leverages OpenAI's GPT models to assist you with command-line tasks, answer questions, and provide context-aware assistance based on your current working directory and piped input. 🤖💻
 
-https://github.com/user-attachments/assets/ccbdb6e2-5770-4aac-9686-fd1e92943e98
+https://github.com/user-attachments/assets/c7156f1c-3bfc-4618-923a-611876796920
 
 ---
 
