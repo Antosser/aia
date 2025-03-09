@@ -110,6 +110,41 @@ async fn main() -> Result<()> {
                 .into(),
         );
 
+        {
+            let request = CreateChatCompletionRequestArgs::default()
+                .model(&config.openai_model)
+                .messages(messages.clone())
+                .build()
+                .context("Failed to create request")?;
+
+            let spinner = spinner();
+            spinner.start("Thinking...");
+            let response = client
+                .chat()
+                .create(request)
+                .await
+                .context("Failed to get OpenAI response")?;
+            spinner.stop("Thought");
+
+            let choice = response
+                .choices
+                .first()
+                .ok_or_else(|| anyhow!("No choices returned in response"))?;
+            let response_content = choice
+                .message
+                .content
+                .clone()
+                .ok_or_else(|| anyhow!("Failed to get response content"))?;
+
+            messages.push(
+                ChatCompletionRequestAssistantMessageArgs::default()
+                    .content(response_content.clone())
+                    .build()
+                    .context("Failed to build assistant message")?
+                    .into(),
+            );
+        }
+
         let request = CreateChatCompletionRequestArgs::default()
             .model(&config.openai_model)
             .messages(messages.clone())
@@ -127,7 +162,7 @@ async fn main() -> Result<()> {
 
         let choice = response
             .choices
-            .get(0)
+            .first()
             .ok_or_else(|| anyhow!("No choices returned in response"))?;
         let response_content = choice
             .message
@@ -201,10 +236,17 @@ async fn main() -> Result<()> {
                     .ok_or_else(|| anyhow!("Failed to get question"))?;
                 info(question).context("Failed to log question")?;
             }
+            "answer" => {
+                let answer = response_json["answer"]
+                    .as_str()
+                    .ok_or_else(|| anyhow!("Failed to get answer"))?;
+                info(answer).context("Failed to log answer")?;
+            }
             _ => return Err(anyhow!("Unexpected response type")),
         }
     }
 
     outro("Goodbye!").context("Failed to display outro message")?;
+
     Ok(())
 }
