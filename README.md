@@ -73,31 +73,6 @@ cat file.txt | aia
 
 ---
 
-## Example 🌟
-
-```bash
-$ aia
-AIA Terminal Assistant 🚀
-
-Input: How can I list all files in this directory?
-Command: ls
-Pick an action:
-  execute: Execute 🛠️
-  follow: Follow-up 🔄
-  quit: Quit 🛑
-```
-
----
-
-## Dependencies 📦
-
-- **async-openai**: For interacting with OpenAI's API. 🤖
-- **cliclack**: For building the interactive CLI interface. 🖥️
-- **tokio**: For asynchronous runtime support. ⚡
-- **serde_json**: For parsing JSON responses. 📄
-
----
-
 ## Contributing 🤝
 
 Contributions are welcome! Please open an issue or submit a pull request for any improvements or bug fixes. 🐛🔧
