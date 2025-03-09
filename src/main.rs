@@ -248,6 +248,7 @@ async fn main() -> Result<()> {
                     .as_str()
                     .ok_or_else(|| anyhow!("Failed to get command"))?;
                 info!(command = command, "Command received");
+                cliclack::log::info(format!("Command: {}", command))?;
 
                 let selected = select("Pick an action")
                     .item("execute", "Execute", "")
@@ -300,12 +301,14 @@ async fn main() -> Result<()> {
                     .as_str()
                     .ok_or_else(|| anyhow!("Failed to get question"))?;
                 info!(question = question, "Question received");
+                cliclack::log::info(format!("Question: {}", question))?;
             }
             "answer" => {
                 let answer = response_json["answer"]
                     .as_str()
                     .ok_or_else(|| anyhow!("Failed to get answer"))?;
                 info!(answer = answer, "Answer received");
+                cliclack::log::info(format!("Answer: {}", answer))?;
             }
             _ => {
                 error!("Unexpected response type");
