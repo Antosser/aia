@@ -17,12 +17,12 @@ impl Config {
             .context("Failed to get configuration directory")?;
 
         if !config_path.exists() {
-            fs::create_dir_all(&config_dir).context("Failed to create configuration directory")?;
-            fs::write(&config_path, include_str!("../config_template.conf"))
+            fs::create_dir_all(config_dir).context("Failed to create configuration directory")?;
+            fs::write(config_path, include_str!("../config_template.conf"))
                 .context("Failed to write default config file")?;
         }
 
-        let mut file = std::fs::File::open(&config_path).context("Failed to open config file")?;
+        let mut file = std::fs::File::open(config_path).context("Failed to open config file")?;
 
         let mut contents = String::new();
         file.read_to_string(&mut contents)
