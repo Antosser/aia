@@ -16,10 +16,10 @@ use tracing_subscriber::{EnvFilter, fmt, prelude::*};
 
 fn init_logging() -> Result<(), Box<dyn std::error::Error>> {
     // Create the /var/log/aia directory if it doesn't exist
-    let log_dir = "/var/log/aia";
-    if !std::path::Path::new(log_dir).exists() {
-        std::fs::create_dir_all(log_dir)?;
-        debug!("Created log directory: {}", log_dir);
+    let log_dir = dirs::cache_dir().unwrap().join("aia");
+    if !log_dir.exists() {
+        std::fs::create_dir_all(&log_dir)?;
+        debug!("Created log directory: {:?}", log_dir);
     }
 
     // Create a file appender for the log file
