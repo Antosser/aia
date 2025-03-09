@@ -278,6 +278,14 @@ async fn main() -> Result<()> {
                             info!("User chose to quit");
                             break 'infinite;
                         }
+
+                        messages.push(
+                            ChatCompletionRequestUserMessageArgs::default()
+                                .content("User executed command")
+                                .build()
+                                .context("Failed to build follow-up message")?
+                                .into(),
+                        );
                     }
                     "follow" => {
                         info!("User chose to follow up");
