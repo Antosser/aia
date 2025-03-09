@@ -1,6 +1,9 @@
 mod config;
 
-use std::{io::Read, process::exit};
+use std::{
+    io::Read,
+    process::{Command, Stdio, exit},
+};
 
 use anyhow::{Context, Result, anyhow};
 use async_openai::{
@@ -206,11 +209,16 @@ async fn main() -> Result<()> {
 
                 match selected {
                     "execute" => {
-                        std::process::Command::new("bash")
+                        let status = Command::new("bash")
                             .arg("-c")
                             .arg(command)
-                            .output()
-                            .context("Failed to execute command")?;
+                            .stdout(Stdio::inherit()) // Bind stdout to terminal's stdout
+                            .stderr(Stdio::inherit()) // Bind stderr to terminal's stderr
+                            .spawn() // Spawn the process
+                            .context("Failed to execute command")?
+                            .wait()?;
+
+                        cliclack::log::info(format!("Command executed with status: {}", status))?;
 
                         let selected = select("Pick an action")
                             .item("continue", "Continue", "")
